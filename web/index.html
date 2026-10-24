@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#fff5f7"><title>最爱老婆 · 我们的生活手记</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="vendor/leaflet/leaflet.css"><link rel="stylesheet" href="server.css"></head>
+<body>
+<aside class="sidebar">
+  <a class="brand" href="#timeline"><span class="brand-mark">爱</span><span>最爱老婆<small>OUR LITTLE DAYS</small></span></a>
+  <div class="home-label">两个人，一个小世界</div>
+  <nav aria-label="主导航">
+    <button data-view="timeline"><i data-icon="sun"></i>生活时间线<span>01</span></button>
+    <button data-view="album"><i data-icon="image"></i>我们的相册<span>02</span></button>
+    <button data-view="stories"><i data-icon="book"></i>故事集<span>03</span></button>
+  </nav>
+  <div class="nav-separator"></div><p class="nav-label">慢慢生长的生活</p>
+  <button class="anniversary-nav" data-view="anniversaries"><i data-icon="calendar"></i>纪念日<span>记得爱</span></button>
+  <button class="wish-nav" data-view="wishes"><i data-icon="heart"></i>愿望清单<span>一起实现</span></button>
+  <button class="footprint-nav" data-view="footprints"><i data-icon="map"></i>地图足迹<span>一起走过</span></button>
+  <button class="quiz-nav" data-view="quizzes"><i data-icon="message"></i>给你出道题<span>懂你一点</span></button>
+  <div class="side-note"><span>✳</span><p>平凡的每一天，<br>都值得好好收藏。</p><small>TAKE IT SLOW, TOGETHER.</small></div>
+  <button class="manage-link" data-view="manage"><i data-icon="settings"></i>整理与管理<i data-icon="arrow"></i></button>
+</aside>
+<div class="app-shell">
+  <header class="topbar"><div class="breadcrumb">我们的生活手记<span>/</span><b id="crumb">生活时间线</b></div><a href="#timeline" class="mobile-brand">最爱老婆</a><div class="top-actions"><span class="preview-label"><span></span>本地开发版</span><button class="text-button account-access" id="accountAccess">账号登录</button><button class="avatar" aria-label="查看当前账号" id="profile">我<span>她</span></button></div></header>
+  <main id="main">
+    <section class="intro"><div><div class="eyebrow">COLLECT THE LITTLE THINGS</div><h1 id="pageTitle">把日子，过成故事<span>。</span></h1><p id="pageSubtitle">有你在的每一个平常，都值得被记住。</p></div><button class="button primary" id="compose"><i data-icon="plus"></i>记下这一刻</button></section>
+    <section id="timelineView" class="view">
+      <div class="hero"><img src="assets/mountain.jpg" alt="山间湖畔的宁静风景，示例封面"><div class="hero-shade"></div><div class="hero-content"><span class="hero-kicker">LIFE, WITH YOU</span><h2>不必等特别的日子，<br>今天就很值得。</h2><p>一顿饭，一阵风，一起走过的一段路。</p><button id="heroCompose">收藏今天的小美好 <i data-icon="arrow"></i></button></div><div class="hero-caption">慢慢走，慢慢记。<span>示例封面 · Unsplash</span></div></div>
+      <div class="content-layout"><section class="feed-column"><div class="section-heading"><h2>日子里的片段<span id="recordCount"></span></h2><button class="text-button" id="filterToggle"><i data-icon="filter"></i>筛选</button></div>
+        <div class="feed-controls"><div class="chips" id="tagFilters"><button class="chip active" data-tag="all">全部</button><button class="chip" data-tag="日常">小日常</button><button class="chip" data-tag="旅行">去远方</button><button class="chip" data-tag="纪念日">纪念日</button></div><label class="search"><i data-icon="search"></i><input id="search" placeholder="找一段回忆" aria-label="搜索文字和文件名"></label></div>
+        <div class="extra-filters" id="extraFilters" hidden><label>年份<select id="yearFilter"><option value="all">全部年份</option></select></label><label>月份<select id="monthFilter"><option value="all">全部月份</option></select></label><label>故事<select id="storyFilter"><option value="all">全部故事</option></select></label><label>素材<select id="typeFilter"><option value="all">全部类型</option><option value="image">照片</option><option value="video">视频</option><option value="audio">音频</option><option value="document">文档</option><option value="text">纯文字</option></select></label></div>
+        <div class="demo-note" id="demoNote" role="status">正在连接本机服务…</div><div id="feed"></div><div id="feedPager" class="pager"></div>
+      </section><aside class="right-column"><div class="small-card together"><div class="mini-heading"><i data-icon="heart"></i>关于我们</div><div class="interlock"><span>我</span><span>她</span><i>♡</i></div><h3>两个人的生活，<br>慢慢收藏。</h3><p>不赶时间，也不漏掉幸福。</p><div class="tiny-line"></div><div class="couple-date"><span>在一起纪念日</span><b>08.17</b></div><div class="couple-date"><span>结婚纪念日</span><b>10.04</b></div></div>
+      <div class="small-card story-pick"><div class="mini-heading"><i data-icon="book"></i>把片段，串成故事</div><button id="storyFeature" class="feature-story"><img src="assets/sea.jpg" alt="海边风景示例"><span><b>开启我们的故事</b><small>把独立的日记收进同一个章节</small></span><i data-icon="arrow"></i></button><button class="text-button all-stories" data-view="stories">翻开我们的故事集 <i data-icon="arrow"></i></button></div>
+      <div class="margin-quote">“ 幸福是具体的。<br>是与你一起，把今天过好。 ”<span>NOTE TO OURSELVES</span></div></aside></div>
+    </section>
+    <section id="albumView" class="view" hidden><div class="section-heading"><h2>每一帧，都有回声</h2><span class="muted">照片与视频 · 按发生日期排列</span></div><div class="album-grid" id="albumGrid"></div><div id="albumPager" class="pager"></div></section>
+    <section id="storiesView" class="view" hidden><div class="section-heading"><h2>一起走过的章节</h2><button class="button secondary" id="newStory"><i data-icon="plus"></i>新建故事</button></div><div class="stories-grid" id="storiesGrid"></div><div id="storiesPager" class="pager"></div></section>
+    <section id="anniversariesView" class="view" hidden>
+      <div class="anniversary-intro"><div><span class="eyebrow">LITTLE DATES, LOTS OF LOVE</span><h2>把重要的日子，放在心上。</h2><p>相遇、生日、一起许下的承诺，每一年都值得认真记得。</p></div><span class="anniversary-symbol" aria-hidden="true">♡</span></div>
+      <div class="section-heading"><h2>我们的特别日子</h2><div class="anniversary-toolbar"><button class="button secondary" id="previewReminders">查看当前提醒</button><button class="button primary" id="newAnniversary"><i data-icon="plus"></i>添加纪念日</button></div></div>
+      <p class="muted">按北京时间计算。在提醒日期内进入网站时弹出；每个纪念日可单独设置提前天数或关闭提醒。</p>
+      <div id="anniversaryList" class="anniversary-grid"></div><div id="anniversaryPager" class="pager"></div>
+    </section>
+    <section id="wishesView" class="view" hidden>
+      <div class="anniversary-intro"><div><span class="eyebrow">DREAM A LITTLE, TOGETHER</span><h2>把想做的事，一件件变成回忆。</h2><p>一趟旅行、一顿想吃的饭，或一个小小的约定，都可以从这里开始。</p></div><span class="anniversary-symbol" aria-hidden="true">✧</span></div>
+      <div class="section-heading"><h2>我们想一起做的事</h2><button class="button primary" id="newWish"><i data-icon="plus"></i>许一个愿望</button></div>
+      <div class="wish-progress"><div><b id="wishProgressText" role="status">正在翻开愿望清单…</b><span class="muted">慢慢来，每一步都算数。</span></div><progress id="wishProgress" max="1" value="0" aria-label="全部愿望的完成进度"></progress></div>
+      <div class="wish-controls"><div class="chips" aria-label="愿望状态"><button class="chip active" data-wish-status="all" aria-pressed="true">全部</button><button class="chip" data-wish-status="pending" aria-pressed="false">待完成</button><button class="chip" data-wish-status="done" aria-pressed="false">已完成</button></div><label class="search"><i data-icon="search"></i><input id="wishSearch" maxlength="200" placeholder="找一个小愿望" aria-label="搜索愿望和备注"></label></div>
+      <div class="wish-grid" id="wishList"></div><div id="wishPager" class="pager"></div>
+    </section>
+    <section id="footprintsView" class="view" hidden>
+      <div class="section-heading"><div><h2>在中国地图上，留下我们的足迹</h2><p class="muted">点击地图标定地点，放大后可更细致地选点。</p></div><button class="button primary" id="addFootprint"><i data-icon="plus"></i>标定地点</button></div>
+      <div class="footprint-layout"><div class="footprint-map-panel">
+        <div class="map-toolbar"><button class="button secondary" id="resetChinaMap">回到全国</button><button class="button secondary" id="markMapCenter">标定地图中心</button><span class="muted">＋／－缩放 · 拖动浏览</span></div>
+        <div id="chinaMap" class="china-map" aria-label="中国地图，可使用缩放按钮和方向键浏览后标定中心点"></div>
+        <p id="mapStatus" class="map-status" role="status">正在展开中国地图…</p>
+        <p class="muted map-explanation">省级地图用于回忆标注，不包含街道导航或地址搜索。</p>
+      </div><aside class="footprint-list-panel"><div class="section-heading"><h2>标记过的地方 <span id="footprintCount">0</span></h2></div><label class="search footprint-search"><i data-icon="search"></i><input id="footprintSearch" maxlength="200" placeholder="查找地点或省份" aria-label="搜索足迹名称、省份和备注"></label><div id="footprintList"></div><div id="footprintPager" class="pager"></div></aside></div>
+    </section>
+    <section id="quizzesView" class="view" hidden>
+      <div class="anniversary-intro"><div><span class="eyebrow">HOW WELL DO YOU KNOW ME?</span><h2>想问你的，都藏在这道题里。</h2><p>你出题，我来答。把每一次默契，认真留下来。</p></div><span class="anniversary-symbol" aria-hidden="true">?</span></div>
+      <div class="section-heading"><h2>给对方的小考题</h2><button class="button primary" id="newQuestion"><i data-icon="plus"></i>给对方出题</button></div>
+      <div id="quizAccountCard" class="quiz-account-card" role="status">正在确认当前账号…</div>
+      <div class="chips quiz-tabs"><button class="chip active" data-quiz-tab="pending" aria-pressed="true">待我回答 <span id="quizPendingCount"></span></button><button class="chip" data-quiz-tab="created" aria-pressed="false">我出的题 <span id="quizCreatedCount"></span></button><button class="chip" data-quiz-tab="history" aria-pressed="false">答题记录 <span id="quizHistoryCount"></span></button></div>
+      <div id="quizList" class="quiz-grid"></div><div id="quizPager" class="pager"></div>
+      <p class="muted">支持单选和多选。自己出的题只有对方能答，每题保留一次正式提交；发布后题目固定，方便以后回看。</p>
+    </section>
+    <section id="manageView" class="view" hidden><div class="manage-tabs"><button class="chip active" data-manage="drafts">草稿箱</button><button class="chip" data-manage="trash">回收站</button><button class="chip" data-manage="backup">备份与恢复</button></div><div id="manageContent"></div></section>
+    <footer class="footer"><span>最爱老婆 · 把生活交给回忆</span><span>MADE FOR TWO, MEANT TO LAST.</span></footer>
+  </main>
+</div>
+<nav class="mobile-nav" aria-label="手机导航"><button data-view="timeline"><i data-icon="sun"></i>时间线</button><button data-view="album"><i data-icon="image"></i>相册</button><button id="mobileCompose" aria-label="发布记录" class="mobile-add"><i data-icon="plus"></i></button><button data-view="stories"><i data-icon="book"></i>故事</button><button data-view="anniversaries"><i data-icon="calendar"></i>纪念日</button><button data-view="wishes"><i data-icon="heart"></i>愿望</button><button data-view="footprints"><i data-icon="map"></i>足迹</button><button data-view="quizzes"><i data-icon="message"></i>出题</button><button data-view="manage"><i data-icon="settings"></i>管理</button></nav>
+<dialog id="editor" class="editor-dialog"><form id="entryForm"><div class="dialog-heading"><div><small>A LITTLE MOMENT</small><h2 id="editorTitle">记下这一刻</h2></div><button type="button" class="icon-button" data-close="editor" aria-label="保存草稿并关闭"><i data-icon="close"></i></button></div><input id="entryTitle" class="title-input" placeholder="给这一刻起个名字（选填）" maxlength="100" aria-label="记录标题"><textarea id="entryBody" placeholder="今天，有什么想和未来的我们分享？" aria-label="记录正文"></textarea><label class="upload-zone" id="mediaDropZone"><i data-icon="plus"></i><b>添加照片、视频、音频或文档</b><span>支持多选，也可拖入文件；失败可逐个重试</span><input id="mediaInput" type="file" multiple hidden></label><input id="mediaReselect" type="file" hidden><div id="attachmentList" class="media-upload-list"></div><p class="muted">已成功文件会保留。关闭或刷新后，未传完的文件需要重新选择。HEIC/MOV 可保留原件，Live Photo 配对与播放仍待验证。</p><div class="field-grid"><label>发生日期<input id="entryDate" type="date" required></label><label>在哪里<input id="entryPlace" placeholder="例如：家里、海边"></label><label>标签<input id="entryTags" placeholder="多个标签用逗号分隔"></label><label>收进故事<select id="entryStory"></select></label></div><p class="editor-hint">文字及已完成附件保存到本机服务；断网时文字草稿先留在此设备。</p><p id="editorError" class="form-error" role="alert" hidden></p><div class="dialog-footer"><span id="draftStatus" role="status">文字会自动存为草稿</span><button type="button" class="button secondary" id="saveDraft">存草稿</button><button type="submit" class="button primary">保存这段生活 <i data-icon="arrow"></i></button></div></form></dialog>
+<dialog id="detail" class="detail-dialog"><div class="detail-top"><span class="eyebrow">A PAGE OF OUR LIFE</span><button class="icon-button" data-close="detail" aria-label="关闭详情"><i data-icon="close"></i></button></div><div id="detailContent"></div></dialog>
+<dialog id="storyDialog" class="story-dialog"><form id="storyForm"><div class="dialog-heading"><h2>开启一个新故事</h2><button type="button" class="icon-button" data-close="storyDialog" aria-label="关闭"><i data-icon="close"></i></button></div><label>故事名称<input id="storyName" required maxlength="60" placeholder="例如：我们的第一次自驾旅行"></label><label>写一段开场白<textarea id="storyDescription" placeholder="想把哪些日子收进来？"></textarea></label><button class="button primary" type="submit">创建故事</button></form></dialog>
+<dialog id="anniversaryDialog" class="anniversary-dialog" aria-labelledby="anniversaryEditorTitle"><form id="anniversaryForm">
+  <div class="dialog-heading"><div><small>A DATE TO REMEMBER</small><h2 id="anniversaryEditorTitle">添加纪念日</h2></div><button type="button" class="icon-button" data-close="anniversaryDialog" aria-label="关闭纪念日编辑"><i data-icon="close"></i></button></div>
+  <div class="field-grid">
+    <label class="full-width">日子叫什么<input id="anniversaryName" required maxlength="60" placeholder="例如：第一次一起旅行"></label>
+    <label>类型<select id="anniversaryKind"><option value="anniversary">纪念日</option><option value="birthday">生日</option><option value="other">其他特别日子</option></select></label>
+    <label>历法<select id="anniversaryCalendar" required><option value="unconfirmed">待确认（暂不提醒）</option><option value="solar">公历</option></select></label>
+    <label>月份<input id="anniversaryMonth" type="number" required min="1" max="12" inputmode="numeric"></label>
+    <label>日期<input id="anniversaryDay" type="number" required min="1" max="31" inputmode="numeric"></label>
+    <label>起始年份（选填）<input id="anniversaryYear" type="number" min="1" max="9998" inputmode="numeric" placeholder="生日可填出生年份"></label>
+    <label>提前几天提醒<input id="anniversaryLead" type="number" min="0" max="30" required value="0" inputmode="numeric"><small>默认 0：仅当天进入网站时提醒</small></label>
+    <label class="full-width">想记住的话<textarea id="anniversaryNote" maxlength="2000" placeholder="给这个日子留一句话（选填）"></textarea></label>
+  </div>
+  <label class="reminder-switch"><input id="anniversaryEnabled" type="checkbox" checked>开启进入网站时的提醒</label>
+  <p class="muted">不填年份就只记日期，不计算年龄或周年数。公历 2 月 29 日只在实际闰日提醒。</p>
+  <p id="anniversaryError" class="form-error" role="alert" hidden></p>
+  <div class="dialog-footer"><button type="button" class="button secondary" data-close="anniversaryDialog">取消</button><button type="submit" class="button primary">保存这个日子</button></div>
+</form></dialog>
+<dialog id="wishDialog" class="anniversary-dialog wish-dialog" aria-labelledby="wishEditorTitle"><form id="wishForm">
+  <div class="dialog-heading"><div><small>OUR LITTLE WISH</small><h2 id="wishEditorTitle">许一个愿望</h2></div><button type="button" class="icon-button" data-close="wishDialog" aria-label="关闭愿望编辑"><i data-icon="close"></i></button></div>
+  <div class="field-grid">
+    <label class="full-width">想一起做什么<input id="wishTitle" required maxlength="100" placeholder="例如：一起去海边看日出"></label>
+    <label class="full-width">想在哪天完成（选填）<input id="wishTargetDate" type="date"></label>
+    <label class="full-width">记下期待和小计划（选填）<textarea id="wishNote" maxlength="5000" placeholder="为什么想做这件事？有什么想准备的？"></textarea></label>
+  </div>
+  <p id="wishError" class="form-error" role="alert" hidden></p>
+  <div class="dialog-footer"><button type="button" class="button secondary" data-close="wishDialog">取消</button><button type="submit" class="button primary">把愿望记下来</button></div>
+</form></dialog>
+<dialog id="footprintDialog" class="anniversary-dialog" aria-labelledby="footprintEditorTitle"><form id="footprintForm">
+  <div class="dialog-heading"><div><small>A PLACE WITH YOU</small><h2 id="footprintEditorTitle">记下这个地点</h2></div><button type="button" class="icon-button" data-close="footprintDialog" aria-label="关闭地点编辑"><i data-icon="close"></i></button></div>
+  <div class="field-grid"><label class="full-width">地点名称<input id="footprintName" required maxlength="100" placeholder="例如：一起散步的海边"></label><label>省份／地区（选填）<input id="footprintProvince" maxlength="60"></label><label>到访日期（选填）<input id="footprintDate" type="date"></label><label class="full-width">在这里的回忆（选填）<textarea id="footprintNote" maxlength="5000" placeholder="把那天的一点小事留在这里"></textarea></label></div>
+  <div class="selected-location"><span id="footprintCoordinates" class="muted"></span><button type="button" class="text-button" id="repositionFootprint">重新在地图上选点</button></div>
+  <p id="footprintError" class="form-error" role="alert" hidden></p>
+  <div class="dialog-footer"><button type="button" class="button secondary" data-close="footprintDialog">取消</button><button type="submit" class="button primary">保存这个地点</button></div>
+</form></dialog>
+<dialog id="authDialog" class="anniversary-dialog auth-dialog" aria-labelledby="authTitle">
+  <div class="dialog-heading"><div><small>JUST THE TWO OF US</small><h2 id="authTitle">登录自己的账号</h2></div><button class="icon-button" data-close="authDialog" aria-label="关闭账号窗口"><i data-icon="close"></i></button></div>
+  <p class="muted">用各自的账号出题和答题，题目会自动交给另一位。</p>
+  <p id="authSetupNotice" class="local-note" hidden>请先在服务主机打开 http://127.0.0.1:8000，设置两个人的账号，再在手机上登录。</p>
+  <form id="authSetupForm" hidden>
+    <p class="muted">首次使用设置两人账号，密码由你们自己填写。</p>
+    <fieldset><legend>第一位</legend><div class="field-grid"><label>显示名字<input id="setupName1" required maxlength="30" value="我" autocomplete="off"></label><label>登录名<input id="setupUsername1" required minlength="3" maxlength="32" pattern="[a-zA-Z0-9][a-zA-Z0-9_.-]*" placeholder="3–32 位英文或数字" autocomplete="off"></label><label class="full-width">登录密码<input id="setupPassword1" type="password" required minlength="8" maxlength="128" autocomplete="new-password" placeholder="至少 8 位"></label></div></fieldset>
+    <fieldset><legend>第二位</legend><div class="field-grid"><label>显示名字<input id="setupName2" required maxlength="30" value="她" autocomplete="off"></label><label>登录名<input id="setupUsername2" required minlength="3" maxlength="32" pattern="[a-zA-Z0-9][a-zA-Z0-9_.-]*" placeholder="与第一位的登录名不同" autocomplete="off"></label><label class="full-width">登录密码<input id="setupPassword2" type="password" required minlength="8" maxlength="128" autocomplete="new-password" placeholder="至少 8 位"></label></div></fieldset>
+    <button class="button primary" type="submit">设置两人账号</button>
+  </form>
+  <form id="authLoginForm" hidden><div class="field-grid"><label class="full-width">登录名<input id="loginUsername" required maxlength="32" autocomplete="username"></label><label class="full-width">密码<input id="loginPassword" type="password" required maxlength="128" autocomplete="current-password"></label></div><button class="button primary" type="submit">登录</button></form>
+  <div id="authSignedIn" hidden><p id="authCurrentName"></p><button class="button secondary" id="logoutAccount">退出当前账号</button></div>
+  <p id="authError" class="form-error" role="alert" hidden></p>
+</dialog>
+<dialog id="questionDialog" class="anniversary-dialog question-dialog" aria-labelledby="questionEditorTitle"><form id="questionForm">
+  <div class="dialog-heading"><div><small>A LITTLE QUESTION FOR YOU</small><h2 id="questionEditorTitle">给对方出道题</h2></div><button type="button" class="icon-button" data-close="questionDialog" aria-label="关闭出题窗口"><i data-icon="close"></i></button></div>
+  <div class="field-grid"><label class="full-width">想问对方什么<textarea id="questionBody" required maxlength="3000" placeholder="例如：我最想和你一起去哪里？"></textarea></label><label class="full-width">题型<select id="questionKind"><option value="single">单选题</option><option value="multiple">多选题（全选对才算答对）</option></select></label></div>
+  <p class="muted">填写 2–6 个不同的选项，并勾选正确答案。</p><div id="questionOptions"></div><button type="button" class="text-button" id="addQuestionOption">＋ 再加一个选项</button>
+  <div class="field-grid"><label class="full-width">答案解析（选填，提交后对方可见）<textarea id="questionExplanation" maxlength="3000" placeholder="给答案留一句话"></textarea></label></div>
+  <p class="muted">发布后题目固定。出题人不能回答自己的题，对方每题只有一次正式提交。</p><p id="questionError" class="form-error" role="alert" hidden></p>
+  <div class="dialog-footer"><button type="button" class="button secondary" data-close="questionDialog">取消</button><button class="button primary" type="submit">发给对方来回答</button></div>
+</form></dialog>
+<dialog id="quizAnswerDialog" class="detail-dialog quiz-answer-dialog" aria-labelledby="quizDetailTitle"><div class="detail-top"><span class="eyebrow">A LITTLE MORE ABOUT US</span><button class="icon-button" data-close="quizAnswerDialog" aria-label="关闭题目"><i data-icon="close"></i></button></div><div id="quizDetailContent"></div></dialog>
+<dialog id="reminderDialog" class="reminder-dialog" aria-labelledby="reminderTitle">
+  <div class="dialog-heading"><span class="eyebrow">SOMETHING TO CELEBRATE</span><button class="icon-button" data-close="reminderDialog" aria-label="关闭纪念日提醒"><i data-icon="close"></i></button></div>
+  <div class="reminder-heart" aria-hidden="true">♡</div><h2 id="reminderTitle">有个特别的日子，想提醒你。</h2><p class="muted" id="reminderDate"></p>
+  <div id="reminderItems"></div><p id="reminderMore" class="muted" hidden>还有更多提醒，可在纪念日页面查看。</p>
+  <div class="dialog-footer"><button class="button secondary" id="reminderManage">看看我们的纪念日</button><button class="button primary" data-close="reminderDialog">记在心里了</button></div>
+</dialog>
+<div class="toast" id="toast" role="status" hidden></div><script src="vendor/leaflet/leaflet.js"></script><script src="map.js"></script><script src="quizzes.js"></script><script src="media.js"></script><script src="app.js"></script>
+</body></html>

@@ -119,7 +119,7 @@ def test_v3_migration_keeps_anniversaries_and_runs_once(tmp_path):
         assert anniversary['name'] == '已编辑的纪念日' and anniversary['enabled'] is False
         wish = save(first)
     with TestClient(create_app(path)) as restarted:
-        assert restarted.get('/api/health').json()['schema_version'] == 7
+        assert restarted.get('/api/health').json()['schema_version'] == 8
         assert restarted.get('/api/wishes').json()['total'] == 1
         assert restarted.get('/api/wishes').json()['items'][0]['id'] == wish['id']
 

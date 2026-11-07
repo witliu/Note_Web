@@ -21,6 +21,8 @@ def descriptor(row):
     result = {key: row[key] for key in ['id', 'name', 'mime', 'kind', 'size', 'sha256', 'status', 'error', 'expected_size']}
     result['url'] = f"/api/media/{row['id']}/content"
     result['download_url'] = result['url'] + '?download=1'
+    if row['kind'] == 'image':
+        result['preview_url'] = f"/api/media/{row['id']}/preview" if Path(row['name']).suffix.lower() == '.dng' else result['url']
     result['discarded'] = row['discarded_at'] is not None
     return result
 
@@ -50,7 +52,7 @@ def sniff(header, name):
     if header[:4] == b'RIFF' and header[8:12] == b'WEBP': return 'image/webp', 'image'
     if header[:4] == b'RIFF' and header[8:12] == b'WAVE': return 'audio/wav', 'audio'
     if header.startswith(b'BM'): return 'image/bmp', 'image'
-    if header[:4] in (b'II*\x00', b'MM\x00*'): return 'image/tiff', 'image'
+    if header[:4] in (b'II*\x00', b'MM\x00*'): return ('image/x-adobe-dng' if ext == '.dng' else 'image/tiff'), 'image'
     if len(header) >= 2 and header[0] == 255 and header[1] & 240 == 240 and ext == '.aac': return 'audio/aac', 'audio'
     if header[4:8] in (b'moov', b'mdat', b'wide', b'free') and ext == '.mov': return 'video/quicktime', 'video'
     if header.startswith(b'fLaC'): return 'audio/flac', 'audio'

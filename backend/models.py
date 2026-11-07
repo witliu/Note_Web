@@ -14,6 +14,9 @@ class Revision(StrictModel):
 
 
 class EntryInput(StrictModel):
+    kind: Literal['entry', 'quote'] = 'entry'
+    quote_source: str = Field(default='', max_length=300)
+    quote_note: str = Field(default='', max_length=5000)
     title: str = Field(default='', max_length=100)
     body: str = Field(default='', max_length=100000)
     date: date
@@ -29,7 +32,7 @@ class EntryInput(StrictModel):
             raise ValueError('附件不能重复')
         return value
 
-    @field_validator('title', 'body', 'place')
+    @field_validator('title', 'body', 'place', 'quote_source', 'quote_note')
     @classmethod
     def trim_text(cls, value):
         return value.strip()
@@ -49,6 +52,8 @@ class PublishInput(EntryInput):
 
     @model_validator(mode='after')
     def require_body(self):
+        if self.kind == 'quote' and not self.body:
+            raise ValueError('请填写语录正文，或提取图片文字并校对后保存')
         if not self.body and not self.attachment_ids:
             raise ValueError('请填写正文或添加至少一个已上传完成的附件')
         if self.draft_id is not None and self.draft_revision is None:

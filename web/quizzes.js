@@ -3,6 +3,16 @@ globalThis.QuizFeature = (() => {
   let h, currentUser = null, authState = null, tab = 'pending', page = 1, requestVersion = 0, authRequestVersion = 0;
   let authBusy = false, questionBusy = false, answerBusy = false, loginIntent = null;
   let questionId = null, options = [], correctIds = new Set(), answerSubmissionId = null;
+  let rewardTimer, displayedQuestionId = null;
+  const rewardedAnswers = new Set();
+
+  function rewardHTML() {
+    const hearts = Array.from({ length: 14 }, (_, index) => {
+      const angle = index * Math.PI * 2 / 14;
+      return `<span style="--heart-x:${Math.round(Math.cos(angle) * 118)}px;--heart-y:${Math.round(Math.sin(angle) * 57)}px;--heart-delay:${index % 4 * 55}ms">♥</span>`;
+    }).join('');
+    return `<div id="quizReward" class="quiz-reward" role="status" aria-live="polite"><div class="quiz-reward-particles" aria-hidden="true">${hearts}</div><div class="quiz-reward-message"><span class="quiz-reward-heart" aria-hidden="true">♥</span><strong>答对啦！默契值 +1</strong><span>奖励你一颗小爱心，离彼此又近了一点。</span></div></div>`;
+  }
 
   function error(id, message = '') { h.$(id).textContent = message; h.$(id).hidden = !message; }
   function controls(dialog, busy) {
@@ -95,15 +105,22 @@ globalThis.QuizFeature = (() => {
     h.$('#questionEditorTitle').textContent = `给${currentUser.partner?.display_name || '对方'}出道题`;
     h.$('#questionDialog').showModal(); h.$('#questionBody').focus();
   }
-  function detailHTML(item) {
+  function detailHTML(item, celebrate = false) {
     const chosen = new Set(item.answer?.selected_option_ids || []);
     const correct = new Set(item.correct_option_ids || []);
     const knowsAnswer = Array.isArray(item.correct_option_ids);
     const letters = item.options.filter(o => correct.has(o.id)).map(o => String.fromCharCode(65 + item.options.indexOf(o))).join('、');
-    return `<span class="anniversary-badge">${item.kind === 'multiple' ? '多选题 · 全部选对才算正确' : '单选题'}</span><h2 id="quizDetailTitle">${h.esc(item.body)}</h2><p class="muted">${h.esc(item.author_name)} 出题给 ${h.esc(item.recipient_name)}</p><form id="quizAnswerForm"><div class="quiz-answer-options">${item.options.map((option, index) => `<label class="quiz-answer-option ${knowsAnswer && correct.has(option.id) ? 'is-correct' : ''}"><input type="${item.kind === 'multiple' ? 'checkbox' : 'radio'}" name="quizSelection" value="${option.id}" ${item.can_answer ? '' : 'disabled'} ${chosen.has(option.id) ? 'checked' : ''}><span><b>${String.fromCharCode(65 + index)}.</b> ${h.esc(option.text)}</span>${knowsAnswer && correct.has(option.id) ? '<small>正确选项</small>' : ''}</label>`).join('')}</div>${item.answer ? `<div class="quiz-result ${item.answer.correct ? 'is-correct' : ''}"><h3>${item.answer.correct ? '答对了，又懂对方一点。' : '这次的回答，也认真留下了。'}</h3><p>${h.esc(item.recipient_name)} 提交于 ${h.esc(new Date(item.answer.submitted_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }))}</p></div>` : item.can_answer ? '<p class="muted">提交后保留这次正式回答，不可修改。</p>' : '<p class="muted">这是你出的题，等待对方来回答。</p>'}${knowsAnswer ? `<p class="quiz-correct-answer">正确答案：${h.esc(letters)}</p>${item.explanation ? `<div class="quiz-explanation"><b>出题人的话</b><p>${h.esc(item.explanation)}</p></div>` : ''}` : ''}<p id="quizAnswerError" class="form-error" role="alert" hidden></p><button class="text-button" type="button" id="quizAnswerLogin" hidden>登录后继续</button>${item.can_answer ? '<div class="dialog-footer"><button type="submit" class="button primary">提交我的回答</button></div>' : ''}</form>`;
+    return `<span class="anniversary-badge">${item.kind === 'multiple' ? '多选题 · 全部选对才算正确' : '单选题'}</span><h2 id="quizDetailTitle">${h.esc(item.body)}</h2><p class="muted">${h.esc(item.author_name)} 出题给 ${h.esc(item.recipient_name)}</p><form id="quizAnswerForm"><div class="quiz-answer-options">${item.options.map((option, index) => `<label class="quiz-answer-option ${knowsAnswer && correct.has(option.id) ? 'is-correct' : ''}"><input type="${item.kind === 'multiple' ? 'checkbox' : 'radio'}" name="quizSelection" value="${option.id}" ${item.can_answer ? '' : 'disabled'} ${chosen.has(option.id) ? 'checked' : ''}><span><b>${String.fromCharCode(65 + index)}.</b> ${h.esc(option.text)}</span>${knowsAnswer && correct.has(option.id) ? '<small>正确选项</small>' : ''}</label>`).join('')}</div>${item.answer ? `${celebrate ? rewardHTML() : ''}<div class="quiz-result ${item.answer.correct ? 'is-correct' : ''}"><h3>${item.answer.correct ? '答对了，又懂对方一点。' : '这次的回答，也认真留下了。'}</h3><p>${h.esc(item.recipient_name)} 提交于 ${h.esc(new Date(item.answer.submitted_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }))}</p></div>` : item.can_answer ? '<p class="muted">提交后保留这次正式回答，不可修改。</p>' : '<p class="muted">这是你出的题，等待对方来回答。</p>'}${knowsAnswer ? `<p class="quiz-correct-answer">正确答案：${h.esc(letters)}</p>${item.explanation ? `<div class="quiz-explanation"><b>出题人的话</b><p>${h.esc(item.explanation)}</p></div>` : ''}` : ''}<p id="quizAnswerError" class="form-error" role="alert" hidden></p><button class="text-button" type="button" id="quizAnswerLogin" hidden>登录后继续</button>${item.can_answer ? '<div class="dialog-footer"><button type="submit" class="button primary">提交我的回答</button></div>' : ''}</form>`;
   }
-  function showQuestion(item) {
-    h.$('#quizDetailContent').innerHTML = detailHTML(item);
+  function showQuestion(item, celebrate = false) {
+    clearTimeout(rewardTimer);
+    displayedQuestionId = item.id;
+    h.$('#quizDetailContent').innerHTML = detailHTML(item, celebrate);
+    if (celebrate) {
+      const reward = h.$('#quizReward');
+      reward.scrollIntoView?.({ block: 'nearest' });
+      rewardTimer = setTimeout(() => { reward.hidden = true; }, 3000);
+    }
     h.$('#quizAnswerLogin').onclick = h.action(openAccount);
     const form = h.$('#quizAnswerForm');
     form.onsubmit = async event => {
@@ -113,7 +130,14 @@ globalThis.QuizFeature = (() => {
       answerBusy = true; controls('quizAnswerDialog', true);
       try {
         const result = await h.api(`/quizzes/${item.id}/answers`, { method: 'POST', body: JSON.stringify({ id: answerSubmissionId, selected_option_ids: selected }) });
-        showQuestion(result); if (h.getView() === 'quizzes') await load();
+        if (displayedQuestionId !== item.id || !h.$('#quizAnswerDialog').open) return;
+        const rewardId = result.answer?.id;
+        const celebrate = result.answer?.correct === true && !!rewardId && !rewardedAnswers.has(rewardId);
+        if (celebrate) {
+          rewardedAnswers.add(rewardId);
+          if (rewardedAnswers.size > 200) rewardedAnswers.delete(rewardedAnswers.values().next().value);
+        }
+        showQuestion(result, celebrate); if (h.getView() === 'quizzes') await load();
       } catch (failure) {
         error('#quizAnswerError', failure.message);
         h.$('#quizAnswerLogin').hidden = failure.status !== 401;
@@ -131,7 +155,6 @@ globalThis.QuizFeature = (() => {
   function init(helpers) {
     h = helpers;
     h.$('#accountAccess').onclick = h.action(openAccount);
-    h.$('#newQuestion').onclick = h.action(newQuestion);
     h.$$('[data-quiz-tab]').forEach(button => { button.onclick = h.action(async () => {
       tab = button.dataset.quizTab; page = 1;
       h.$$('[data-quiz-tab]').forEach(b => { b.classList.toggle('active', b === button); b.setAttribute('aria-pressed', String(b === button)); });
@@ -176,6 +199,11 @@ globalThis.QuizFeature = (() => {
     h.$('#questionKind').onchange = () => { if (h.$('#questionKind').value === 'single' && correctIds.size > 1) correctIds = new Set([[...correctIds][0]]); renderOptions(); };
     h.$('#questionDialog').addEventListener('cancel', event => { if (questionBusy) event.preventDefault(); });
     h.$('#quizAnswerDialog').addEventListener('cancel', event => { if (answerBusy) event.preventDefault(); });
+    h.$('#quizAnswerDialog').addEventListener('close', () => {
+      clearTimeout(rewardTimer); displayedQuestionId = null;
+      const reward = h.$('#quizReward');
+      if (reward) reward.hidden = true;
+    });
     h.$('#questionForm').onsubmit = async event => {
       event.preventDefault(); if (questionBusy) return;
       if (!correctIds.size) { error('#questionError', '请先勾选正确答案'); return; }
@@ -191,5 +219,5 @@ globalThis.QuizFeature = (() => {
     };
     refreshAccount().catch(() => {});
   }
-  return { init, load, openAccount, detailHTML, cards };
+  return { init, load, openAccount, newQuestion, detailHTML, cards };
 })();

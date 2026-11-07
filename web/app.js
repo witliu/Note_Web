@@ -1,4 +1,14 @@
 'use strict';
+// Prevent browser page zoom from touch gestures; Leaflet handles its own map zoom.
+function preventPageGestureZoom(event) {
+  if (event.target?.closest?.('#chinaMap')) return;
+  if (event.type.startsWith('gesture') || event.touches?.length > 1) {
+    if (event.cancelable) event.preventDefault();
+  }
+}
+for (const type of ['gesturestart', 'gesturechange', 'touchmove']) {
+  window.addEventListener(type, preventPageGestureZoom, { passive: false });
+}
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const paths={sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4L19 5"/>',image:'<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 4-6 5 7"/>',book:'<path d="M12 5c-3-2-6-2-10-1v15c4-1 7-1 10 1 3-2 6-2 10-1V4c-4-1-7-1-10 1Zm0 0v15"/>',calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 11h18m-13 5h2m4 0h2"/>',heart:'<path d="M20.5 5.5c-2.5-2.5-6-1.5-8.5 1C9.5 4 6 3 3.5 5.5S1.5 11 4 13.5l8 7 8-7c2.5-2.5 3-5.5.5-8Z"/>',map:'<path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2V5Zm6-2v16m6-14v16"/>',message:'<path d="M21 11a9 9 0 0 1-9 9H4l-2 2V11a9 9 0 1 1 19 0Z"/><path d="M8 10h8m-8 4h5"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="m9 3-1 3-3 1-2 3 2 2-1 3 3 2 2 4h5l1-3 3-1 3-3-2-2 1-3-3-2-2-4H9Z"/>',arrow:'<path d="M4 12h15m-5-5 5 5-5 5"/>',plus:'<path d="M12 5v14M5 12h14"/>',search:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',filter:'<path d="M4 6h16M7 12h10m-6 6h2"/>',close:'<path d="m6 6 12 12M6 18 18 6"/>',trash:'<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>',audio:'<path d="M9 18V5l11-2v13M9 8l11-2"/><ellipse cx="6" cy="18" rx="3" ry="2"/><ellipse cx="17" cy="16" rx="3" ry="2"/>',video:'<rect x="3" y="3" width="18" height="18" rx="3"/><path d="m10 8 6 4-6 4V8Z"/>',download:'<path d="M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4"/>',restore:'<path d="M4 10a8 8 0 1 1 0 5m0-12v7h7"/>'};
 function icon(name){return `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${paths[name]||paths.image}</svg>`}function icons(root=document){root.querySelectorAll('i[data-icon]').forEach(e=>e.innerHTML=icon(e.dataset.icon))}icons();
@@ -22,13 +32,33 @@ const LOCAL_PREFIX = 'journal-text-draft-v1:';
 let view = 'timeline', page = 1, storiesPage = 1, managePage = 1, manageTab = 'drafts';
 let tag = '', feedRequest = 0, draft = null, draftTimer, searchTimer, toastTimer;
 let saveChain = Promise.resolve(), publishing = false, localReady = true;
-let storyChoices = [];
+let storyChoices = [], storiesRequest = 0, manageRequest = 0;
 let anniversaryPage = 1, anniversaryItems = [], anniversaryEditing = null;
 let pendingAnniversaryReminder = null, anniversaryReminderShown = false;
 let wishesPage = 1, wishStatus = 'all', wishItems = [], wishEditing = null, wishRequest = 0, wishSearchTimer, wishSaving = false;
 let footprintPage = 1, footprintItems = [], footprintEditing = null, footprintPicking = false, footprintSaving = false;
 let footprintMap = null, footprintMapPromise = null, footprintRequest = 0, footprintMarkerRequest = 0, footprintSearchTimer, footprintMarkerTimer;
 let albumPage = 1, albumRequest = 0;
+let creationTimer;
+const celebratedEntries = new Set();
+
+function celebrateNewEntry(id, kind) {
+  if (celebratedEntries.has(id)) return;
+  celebratedEntries.add(id);
+  if (celebratedEntries.size > 200) celebratedEntries.delete(celebratedEntries.values().next().value);
+  clearTimeout(creationTimer);
+  const effect = $('#entryCelebration');
+  effect.hidden = true;
+  $('#entryCelebrationTitle').textContent = kind === 'quote' ? '一句心动，收藏好了！' : '又收藏了一段美好！';
+  $('#entryCelebrationHearts').innerHTML = Array.from({ length: 16 }, (_, index) => {
+    const angle = index * Math.PI * 2 / 16;
+    return `<span style="--heart-x:${Math.round(Math.cos(angle) * 140)}px;--heart-y:${Math.round(Math.sin(angle) * 100)}px;--heart-delay:${index % 4 * 70}ms">♥</span>`;
+  }).join('');
+  // Restart the CSS animation if another record was created while it was visible.
+  void effect.offsetWidth;
+  effect.hidden = false;
+  creationTimer = setTimeout(() => { effect.hidden = true; }, 3000);
+}
 
 function toast(message) {
   clearTimeout(toastTimer);
@@ -46,7 +76,13 @@ async function api(path, options = {}) {
   const response = await fetch('/api' + path, {
     ...options, headers: { 'Content-Type': 'application/json', ...options.headers }, cache: 'no-store'
   });
-  const result = await response.json();
+  let result;
+  try { result = await response.json(); }
+  catch {
+    const error = new Error('服务返回异常，请稍后重试；当前文字不会清空。');
+    error.status = response.status;
+    throw error;
+  }
   if (!response.ok) {
     let message = result.detail;
     if (Array.isArray(message)) message = message.map(item => item.msg).join('；');
@@ -82,15 +118,17 @@ function pager(element, result, callback) {
 function entryCards(items) {
   return items.map(e => {
     const attachments = e.attachments || [], image = attachments.find(a => a.kind === 'image');
-    const cover = image ? `<img class="entry-media" src="${esc(image.url)}" alt="${esc(image.name)}" loading="lazy">` : '';
-    return `<article class="entry"><div class="entry-head"><span class="author-icon">爱</span><div><div class="entry-author">我们的生活</div><div class="entry-meta">${esc(dateLabel(e.date))}${e.place ? ' · ' + esc(e.place) : ''}</div></div></div><div class="entry-content" role="button" tabindex="0" data-entry="${e.id}"><h3>${esc(e.title || '平凡又珍贵的一天')}</h3><p>${esc(e.body.slice(0, 160))}${e.body.length > 160 ? '…' : ''}</p>${cover}${attachments.length ? `<p class="muted">${attachments.length} 个附件 · 点击查看</p>` : ''}</div><div class="entry-bottom">${e.tags.map(t => `<span class="tag"># ${esc(t)}</span>`).join('')}</div></article>`;
+    const cover = image ? `<img class="entry-media" src="${esc(MediaFeature.imageURL(image))}" alt="${esc(image.name)}" loading="lazy">` : '';
+    return `<article class="entry"><div class="entry-head"><span class="author-icon">爱</span><div><div class="entry-author">我们的生活</div><div class="entry-meta">${esc(dateLabel(e.date))}${e.place ? ' · ' + esc(e.place) : ''}</div></div></div><div class="entry-content" role="button" tabindex="0" data-entry="${e.id}"><h3>${esc(e.title || (e.kind === 'quote' ? '一句想留下的话' : '平凡又珍贵的一天'))}</h3><p>${esc(e.body.slice(0, 160))}${e.body.length > 160 ? '…' : ''}</p>${cover}${attachments.length ? `<p class="muted">${attachments.length} 个附件 · 点击查看</p>` : ''}</div><div class="entry-bottom">${e.tags.map(t => `<span class="tag"># ${esc(t)}</span>`).join('')}</div></article>`;
   }).join('');
 }
 
 function bindEntries(root) {
   root.querySelectorAll('[data-entry]').forEach(button => {
     button.onclick = action(() => openEntry(button.dataset.entry));
-    button.onkeydown = event => { if (event.key === 'Enter') button.click(); };
+    button.onkeydown = event => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); button.click(); }
+    };
   });
 }
 
@@ -151,6 +189,7 @@ async function refresh() {
   if (view === 'wishes') await loadWishes();
   if (view === 'footprints') await loadFootprints();
   if (view === 'quizzes') await QuizFeature.load();
+  if (view === 'quotes') await QuoteFeature.load();
 }
 
 const titles = { timeline: ['把日子，过成故事。', '有你在的每一个平常，都值得被记住。', '生活时间线'], album: ['每一帧，都有回声。', '照片与视频，留给下一阶段慢慢收藏。', '我们的相册'], stories: ['一起走过的章节。', '把独立的日记，收进同一个故事。', '故事集'], manage: ['给回忆，多一份安心。', '草稿和回收站，让每一段文字都有归处。', '整理与管理'] };
@@ -159,12 +198,49 @@ titles.anniversaries = ['每个重要的日子，都记得。', '因为有你，
 titles.wishes = ['和你一起，把愿望慢慢实现。', '那些想做的小事，会成为我们的大回忆。', '愿望清单'];
 titles.footprints = ['和你走过的地方，都有故事。', '在中国地图上，收藏属于我们的坐标。', '地图足迹'];
 titles.quizzes = ['你来出题，我来懂你。', '把小小的默契，变成可以回看的记录。', '互相出题'];
+titles.quotes = ['把心动的一句话，轻轻收藏。', '语录、随手记，和图片里想留下的文字。', '语录与随手记'];
+const pageActions = {
+  timeline: { label: '记下这一刻', run: () => openEditor() },
+  album: { label: '记下这一刻', run: () => openEditor() },
+  stories: { label: '新建故事', run: () => { $('#storyForm').reset(); $('#storyDialog').showModal(); } },
+  anniversaries: { label: '添加纪念日', run: () => openAnniversaryEditor() },
+  wishes: { label: '添加愿望', run: () => openWishEditor() },
+  quotes: { label: '记一句话', run: () => openEditor(null, null, null, 'quote') },
+  footprints: { label: '标定地点', run: () => beginFootprint() },
+  quizzes: { label: '出一道题', run: () => QuizFeature.newQuestion() }
+};
+function updatePageAction() {
+  const current = pageActions[view];
+  $('#composeLabel').textContent = current?.label || '';
+  const button = $('#compose');
+  button.hidden = !current;
+  button.setAttribute('aria-label', current?.label || '新增');
+  button.setAttribute('title', current?.label || '新增');
+}
+function closeMobileMenu() {
+  const menu = $('#mobileMenu');
+  if (menu.open) menu.close();
+  $('#mobileMenuToggle').setAttribute('aria-expanded', 'false');
+}
+function openMobileMenu() {
+  const menu = $('#mobileMenu');
+  if (!menu.open) menu.showModal();
+  $('#mobileMenuToggle').setAttribute('aria-expanded', 'true');
+  menu.querySelector('[aria-current="page"]')?.focus();
+}
 async function navigate(target) {
   view = titles[target] ? target : 'timeline';
+  closeMobileMenu();
   const [title, subtitle, crumb] = titles[view];
   $('#pageTitle').textContent = title; $('#pageSubtitle').textContent = subtitle; $('#crumb').textContent = crumb;
+  updatePageAction();
   $$('.view').forEach(element => { element.hidden = element.id !== view + 'View'; });
-  $$('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  $$('[data-view]').forEach(b => {
+    const active = b.dataset.view === view;
+    b.classList.toggle('active', active);
+    if (active) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  });
   if (location.hash !== '#' + view) history.replaceState(null, '', '#' + view);
   if (view === 'timeline') await loadFeed();
   if (view === 'album') await loadAlbum();
@@ -174,6 +250,7 @@ async function navigate(target) {
   if (view === 'wishes') await loadWishes();
   if (view === 'footprints') await loadFootprints();
   if (view === 'quizzes') await QuizFeature.load();
+  if (view === 'quotes') await QuoteFeature.load();
 }
 
 async function loadAlbum() {
@@ -181,7 +258,7 @@ async function loadAlbum() {
   const result = await api('/album?page=' + albumPage);
   if (request !== albumRequest) return;
   if (!result.items.length && albumPage > 1) { albumPage = Math.max(1, Math.ceil(result.total / result.page_size)); return loadAlbum(); }
-  $('#albumGrid').innerHTML = result.items.length ? result.items.map(item => `<button class="album-item" data-album-entry="${item.entry_id}">${item.kind === 'image' ? `<img src="${esc(item.url)}" alt="${esc(item.name)}" loading="lazy">` : `<span class="album-placeholder">${icon('video')}视频 · 点击查看</span>`}<b>${esc(item.entry_title || item.name)}</b><small>${esc(item.date)} · ${esc(item.name)}</small></button>`).join('') : empty('把第一帧心动放进来', '发布记录中的照片和视频会汇集在这里，草稿文件不展示。');
+  $('#albumGrid').innerHTML = result.items.length ? result.items.map(item => `<button class="album-item" data-album-entry="${item.entry_id}">${item.kind === 'image' ? `<img src="${esc(MediaFeature.imageURL(item))}" alt="${esc(item.name)}" loading="lazy">` : `<span class="album-placeholder">${icon('video')}视频 · 点击查看</span>`}<b>${esc(item.entry_title || item.name)}</b><small>${esc(item.date)} · ${esc(item.name)}</small></button>`).join('') : empty('把第一帧心动放进来', '发布记录中的照片和视频会汇集在这里，草稿文件不展示。');
   $$('[data-album-entry]').forEach(button => { button.onclick = action(() => openEntry(button.dataset.albumEntry)); });
   pager($('#albumPager'), result, async next => { albumPage = next; await loadAlbum(); });
 }
@@ -191,7 +268,7 @@ async function ensureFootprintMap() {
     footprintMapPromise = JournalMap.create('chinaMap', {
       onPick(point) {
         const data = footprintPicking && footprintEditing ? { ...footprintEditing } : { id: uid(), revision: 0 };
-        openFootprintEditor({ ...data, ...point });
+        openFootprintEditor({ ...data, ...point, name: data.name || point.city || '' });
       },
       onOpen(id) { openSavedFootprint(id).catch(error => toast(error.message)); },
       onOutside() { $('#mapStatus').textContent = '请在当前中国地图覆盖的范围内标定地点。'; },
@@ -216,8 +293,8 @@ async function loadFootprintMarkers() {
     const result = await api('/footprints/markers?' + params);
     if (request !== footprintMarkerRequest) return;
     footprintMap.setMarkers(result.items);
-    $('#mapStatus').textContent = footprintPicking ? '点击地图，选择这个地点的位置。' : result.has_more ?
-      '当前区域地点较多，已显示前 500 个，请放大地图查看。' : `当前视野有 ${result.items.length} 个标记。点击地图添加，点击标记编辑。`;
+    $('#mapStatus').textContent = footprintPicking ? '先点省份放大，再点城市或区域内位置，也可用省市下拉框选择。' : result.has_more ?
+      '当前区域地点较多，已显示前 500 个，请放大地图查看。' : `当前视野有 ${result.items.length} 个标记。点省份放大，点城市添加，点标记编辑。`;
   } catch { if (request === footprintMarkerRequest) $('#mapStatus').textContent = '标记暂时读取失败，请移动地图或刷新后重试。'; }
 }
 
@@ -235,7 +312,7 @@ async function loadFootprints() {
       footprintPage = Math.max(1, Math.ceil(result.total / result.page_size)); return loadFootprints();
     }
     footprintItems = result.items; $('#footprintCount').textContent = result.total;
-    $('#footprintList').innerHTML = result.items.length ? footprintCards(result.items) : empty('第一枚足迹，等你来放', '点击地图标定地点，或拖动后选择“标定地图中心”。');
+    $('#footprintList').innerHTML = result.items.length ? footprintCards(result.items) : empty('第一枚足迹，等你来放', '先点省份放大，再点击城市标定地点，也可用省市下拉框选择。');
     $$('[data-footprint-locate]').forEach(b => b.onclick = action(async () => {
       const item = footprintItems[Number(b.dataset.footprintLocate)];
       const controller = await ensureFootprintMap(); controller.focus(item);
@@ -376,7 +453,7 @@ function openAnniversaryEditor(item = null) {
 function presentAnniversaryReminder() {
   if (!pendingAnniversaryReminder) return;
   // Do not cover an editor or interrupt unsaved typing with a second modal.
-  if (['editor', 'detail', 'storyDialog', 'anniversaryDialog', 'wishDialog', 'footprintDialog', 'authDialog', 'questionDialog', 'quizAnswerDialog', 'reminderDialog'].some(id => $('#' + id).open)) return;
+  if (['mobileMenu', 'editor', 'detail', 'storyDialog', 'anniversaryDialog', 'wishDialog', 'footprintDialog', 'authDialog', 'questionDialog', 'quizAnswerDialog', 'reminderDialog'].some(id => $('#' + id).open)) return;
   const result = pendingAnniversaryReminder;
   pendingAnniversaryReminder = null;
   $('#reminderDate').textContent = `${result.today} · 北京时间 · ${result.total} 个特别日子`;
@@ -409,9 +486,11 @@ async function openEntry(id) {
   $$('#detail audio,#detail video').forEach(element => element.pause());
   const e = await api('/entries/' + id);
   const root = $('#detailContent');
-  root.innerHTML = `<h2>${esc(e.title || '平凡又珍贵的一天')}</h2><div class="detail-meta">${esc(dateLabel(e.date))}${e.place ? ' · ' + esc(e.place) : ''}</div><div class="detail-body">${esc(e.body)}</div><p>${e.tags.map(t => '# ' + esc(t)).join('　')}</p><div class="record-attachments">${(e.attachments || []).map(MediaFeature.attachmentHTML).join('')}</div><div class="detail-actions"><button class="button secondary" id="historyButton">文字历史 · ${e.history_count}</button><button class="button secondary" id="editButton">编辑记录</button><button class="button secondary" id="deleteButton">移入回收站</button></div><div id="historyPanel" hidden></div>`;
+  root.innerHTML = `<h2 tabindex="-1">${esc(e.title || (e.kind === 'quote' ? '一句想留下的话' : '平凡又珍贵的一天'))}</h2><div class="detail-meta">${esc(dateLabel(e.date))}${e.place ? ' · ' + esc(e.place) : ''}</div><div class="detail-body">${esc(e.body)}</div>${e.kind === 'quote' && e.quote_source ? `<p class="quote-source">—— ${esc(e.quote_source)}</p>` : ''}${e.kind === 'quote' && e.quote_note ? `<p class="quote-note">${esc(e.quote_note)}</p>` : ''}<p>${e.tags.map(t => '# ' + esc(t)).join('　')}</p><div class="record-attachments">${(e.attachments || []).map(MediaFeature.attachmentHTML).join('')}</div><div class="detail-actions"><button class="button secondary" id="historyButton">文字历史 · ${e.history_count}</button><button class="button secondary" id="deleteButton">移入回收站</button></div><div id="historyPanel" hidden></div>`;
   MediaFeature.bindPreviews(root);
+  $('#editButton').hidden = false;
   if (!$('#detail').open) $('#detail').showModal();
+  root.querySelector('h2')?.focus({ preventScroll: true });
   $('#editButton').onclick = action(async () => { $('#detail').close(); await openEditor(e); });
   $('#deleteButton').onclick = action(async () => {
     await api(`/entries/${id}/trash`, { method: 'POST', body: JSON.stringify({ revision: e.revision }) });
@@ -435,7 +514,12 @@ async function openEntry(id) {
 }
 
 async function loadStories() {
+  const request = ++storiesRequest;
   const result = await api('/stories?page=' + storiesPage);
+  if (request !== storiesRequest) return;
+  if (!result.items.length && storiesPage > 1) {
+    storiesPage = Math.max(1, Math.ceil(result.total / result.page_size)); return loadStories();
+  }
   $('#storiesGrid').innerHTML = result.items.length ? result.items.map(s => `<button class="story-card" data-story="${s.id}"><div class="story-cover">${icon('book')}</div><div class="story-card-content"><h3>${esc(s.name)}</h3><p>${esc(s.description || '一起，把这个故事慢慢写完整。')}</p><small>${s.entry_count} 段回忆</small></div></button>`).join('') : empty('新的故事，从这里开始', '旅行、纪念日，或一段想单独珍藏的日常。');
   $$('[data-story]').forEach(b => b.onclick = action(() => openStory(b.dataset.story)));
   pager($('#storiesPager'), result, async next => { storiesPage = next; await loadStories(); });
@@ -443,9 +527,12 @@ async function loadStories() {
 
 async function openStory(id, selectedPage = 1) {
   const [story, entries] = await Promise.all([api('/stories/' + id), api(`/entries?story=${id}&order=asc&page=${selectedPage}`)]);
+  $('#editButton').hidden = true;
+  $('#editButton').onclick = null;
   const root = $('#detailContent');
-  root.innerHTML = `<h2>${esc(story.name)}</h2><p class="detail-body">${esc(story.description)}</p><div class="detail-meta">${entries.total} 段回忆 · 从旧到新</div><div class="story-detail-list">${entries.items.map(e => `<button data-entry="${e.id}"><small>${esc(e.date)}</small><b>${esc(e.title || '生活片段')}</b></button>`).join('') || '<p>发布或编辑记录时，可以将它收进这个故事。</p>'}</div><div id="storyPager" class="pager"></div><div class="detail-actions"><button class="button secondary" id="deleteStory">删除故事，保留记录</button><button class="button primary" id="addToStory">为故事添一页</button></div>`;
+  root.innerHTML = `<h2 tabindex="-1">${esc(story.name)}</h2><p class="detail-body">${esc(story.description)}</p><div class="detail-meta">${entries.total} 段回忆 · 从旧到新</div><div class="story-detail-list">${entries.items.map(e => `<button data-entry="${e.id}"><small>${esc(e.date)}</small><b>${esc(e.title || '生活片段')}</b></button>`).join('') || '<p>发布或编辑记录时，可以将它收进这个故事。</p>'}</div><div id="storyPager" class="pager"></div><div class="detail-actions"><button class="button secondary" id="deleteStory">删除故事，保留记录</button><button class="button primary" id="addToStory">为故事添一页</button></div>`;
   if (!$('#detail').open) $('#detail').showModal();
+  root.querySelector('h2')?.focus({ preventScroll: true });
   bindEntries(root); pager($('#storyPager'), entries, next => openStory(id, next));
   $('#addToStory').onclick = action(async () => { $('#detail').close(); await openEditor(null, null, story); });
   $('#deleteStory').onclick = action(async () => {
@@ -475,6 +562,8 @@ function storeLocal(data) {
 function collect() {
   return { ...draft, title: $('#entryTitle').value, body: $('#entryBody').value,
     date: $('#entryDate').value || today(), place: $('#entryPlace').value,
+    quote_source: draft.kind === 'quote' ? $('#quoteSource').value : '',
+    quote_note: draft.kind === 'quote' ? $('#quoteNote').value : '',
     tags: $('#entryTags').value.split(/[,，]/).map(t => t.trim()).filter(Boolean),
     story: $('#entryStory').value || null, attachment_ids: MediaFeature.readyIds(), local_saved_at: new Date().toISOString() };
 }
@@ -482,15 +571,19 @@ function collect() {
 function captureDraft() {
   if (!draft || publishing) return;
   draft = collect();
-  if (draft.title.trim() || draft.body.trim() || MediaFeature.hasItems()) storeLocal(draft);
+  let hasLocalCopy = false;
+  try { hasLocalCopy = localStorage.getItem(LOCAL_PREFIX + draft.id) !== null; } catch { localReady = false; }
+  const shouldKeep = Boolean(draft.title.trim() || draft.body.trim() || draft.quote_source?.trim() || draft.quote_note?.trim() || MediaFeature.hasItems() || draft.revision || hasLocalCopy);
+  if (shouldKeep) storeLocal(draft);
   $('#draftStatus').textContent = localReady ? '文字已暂存此设备，等待保存到服务…' : '此设备暂存不可用';
+  return shouldKeep;
 }
 
 function saveDraft(force = false) {
   clearTimeout(draftTimer);
   if (!draft || publishing) return saveChain;
-  captureDraft();
-  if (!force && !draft.title.trim() && !draft.body.trim() && !MediaFeature.hasItems()) return saveChain;
+  const shouldSave = captureDraft();
+  if (!force && !shouldSave) return saveChain;
   const selected = draft;
   saveChain = saveChain.catch(() => {}).then(async () => {
     // Earlier requests update the version before the next queued save starts.
@@ -516,12 +609,13 @@ function saveDraft(force = false) {
   return saveChain;
 }
 
-async function openEditor(entry = null, saved = null, story = null) {
+async function openEditor(entry = null, saved = null, story = null, kind = 'entry') {
   if (MediaFeature.busy()) { toast('请等待上传完成，或先取消正在上传的文件'); return; }
   clearTimeout(draftTimer);
   await saveChain.catch(() => {});
   draft = saved ? structuredClone(saved) : {
     id: uid(), entry_id: entry?.id || uid(), editing_id: entry?.id || null,
+    kind: entry?.kind || kind, quote_source: entry?.quote_source || '', quote_note: entry?.quote_note || '',
     editing_revision: entry?.revision || null, revision: 0,
     title: entry?.title || '', body: entry?.body || '', date: entry?.date || today(),
     place: entry?.place || '', tags: entry?.tags || [], story: story?.id || entry?.story || null,
@@ -531,7 +625,12 @@ async function openEditor(entry = null, saved = null, story = null) {
   delete draft.updated_at;
   delete draft.attachments;
   draft.local_saved_at ||= new Date().toISOString();
-  $('#editorTitle').textContent = draft.editing_id ? '继续写这段生活' : '记下这一刻';
+  const isQuote = draft.kind === 'quote';
+  $('#editorTitle').textContent = isQuote ? (draft.editing_id ? '编辑这段语录' : '留下一句话') : draft.editing_id ? '继续写这段生活' : '记下这一刻';
+  $('#quoteFields').hidden = !isQuote;
+  $('#quoteSource').value = draft.quote_source || ''; $('#quoteNote').value = draft.quote_note || '';
+  $('#entrySubmit').innerHTML = (isQuote ? '收藏这句话 ' : '保存这段生活 ') + icon('arrow');
+  $('#entryBody').placeholder = isQuote ? '写下触动你的话，或上传图片后点击“提取文字”…' : '今天，有什么想和未来的我们分享？';
   for (const [id, key] of [['entryTitle', 'title'], ['entryBody', 'body'], ['entryDate', 'date'], ['entryPlace', 'place']]) $('#' + id).value = draft[key];
   $('#entryTags').value = draft.tags.join('，');
   const choices = [...storyChoices];
@@ -552,7 +651,7 @@ async function openEditor(entry = null, saved = null, story = null) {
 async function closeEditor() {
   if (MediaFeature.busy()) { editorError('文件正在上传，请等待完成，或点击文件旁的“取消并移除”。'); return; }
   const saved = await saveDraft().catch(() => null);
-  if (!localReady && !saved && draft && (draft.title.trim() || draft.body.trim() || MediaFeature.hasItems())) {
+  if (!localReady && !saved && draft && (draft.title.trim() || draft.body.trim() || draft.quote_source?.trim() || draft.quote_note?.trim() || MediaFeature.hasItems())) {
     editorError('此设备暂存不可用。请确认文字已保存到服务，或复制文字后再关闭。');
     return;
   }
@@ -565,30 +664,39 @@ $('#entryForm').onsubmit = async event => {
   if (publishing) return;
   captureDraft();
   if (!MediaFeature.canPublish()) { editorError('请先完成或移除未成功的上传，已上传成功的文件会保留。'); return; }
+  if (draft.kind === 'quote' && !draft.body.trim()) { editorError('请填写语录正文，或提取图片文字并校对后保存。'); return; }
   if (!draft.body.trim() && !draft.attachment_ids.length) { editorError('写一句话或添加至少一个附件，就可以发布。'); return; }
   const controls = $$('#entryForm input,#entryForm textarea,#entryForm select,#entryForm button');
   MediaFeature.setLocked(true);
   controls.forEach(control => { control.disabled = true; });
   try {
-    await saveDraft(); publishing = true;
-    const { title, body, date, place, tags, story, attachment_ids, entry_id, editing_revision, id, revision } = draft;
+    const saving = saveDraft();
+    publishing = true;
+    await saving;
+    const isNewRecord = !draft.editing_id;
+    const { title, body, date, place, tags, story, attachment_ids, entry_id, editing_revision, id, revision, kind, quote_source, quote_note } = draft;
     await api('/entries', { method: 'POST', body: JSON.stringify({ id: entry_id, title, body, date, place, tags, story,
-      attachment_ids, revision: editing_revision || 0, draft_id: id, draft_revision: revision }) });
+      attachment_ids, kind: kind || 'entry', quote_source: quote_source || '', quote_note: quote_note || '',
+      revision: editing_revision || 0, draft_id: id, draft_revision: revision }) });
     try { localStorage.removeItem(LOCAL_PREFIX + id); } catch { /* Server data is already committed. */ }
+    if (kind === 'quote' && !editing_revision) QuoteFeature.resetPage();
     draft = null; MediaFeature.reset(); $('#editor').close(); page = 1;
+    if (isNewRecord) celebrateNewEntry(entry_id, kind);
     await refresh(); toast('这段生活已保存到本机服务');
   } catch (error) { editorError(error.message || '发布失败，文字草稿仍保留'); }
   finally { publishing = false; MediaFeature.setLocked(false); controls.forEach(control => { control.disabled = false; }); }
 };
 
 async function loadManage() {
+  const request = ++manageRequest;
   const root = $('#manageContent');
   if (manageTab === 'backup') {
-    root.innerHTML = '<div class="manage-card"><h3>给回忆，多一份安心</h3><p>完整备份与恢复会在媒体数据库方案落实后一起接入。当前没有完整备份功能。</p><p>文字、草稿、故事和历史版本已由本机数据库保存。请勿删除服务的数据目录。</p></div>';
+    root.innerHTML = '<div class="manage-card"><h3>给回忆，多一份安心</h3><p>当前尚未提供完整备份与恢复功能。</p><p>文字、草稿、故事、历史版本与上传原件已保存在主机数据库中。请保留主数据库及媒体数据库目录。</p></div>';
     return;
   }
   if (manageTab === 'trash') {
     const result = await api('/trash?page=' + managePage);
+    if (request !== manageRequest) return;
     root.innerHTML = '<div class="manage-card"><h3>回忆，还在这里</h3><p>删除后可以恢复。永久删除的专用密钥验证尚未接入，当前不提供永久删除。</p>' +
       (result.items.length ? result.items.map(t => `<div class="manage-row"><div><h3>${esc(t.name || '生活片段')}</h3><p>${t.kind === 'entry' ? '生活记录' : t.kind === 'anniversary' ? '纪念日' : t.kind === 'wish' ? '愿望' : t.kind === 'footprint' ? '地图足迹' : ['attachment', 'upload'].includes(t.kind) ? '附件' : '故事'} · ${esc(new Date(t.deleted_at).toLocaleString())}</p></div><button class="button secondary" data-restore="${t.id}" data-kind="${t.kind}" data-revision="${t.revision}">恢复</button></div>`).join('') : empty('回收站还是空的', '删除的记录、附件、故事、纪念日、愿望和地点会出现在这里。')) + '</div><div class="pager" id="managePager"></div>';
     root.querySelectorAll('[data-restore]').forEach(b => b.onclick = action(async () => {
@@ -601,6 +709,7 @@ async function loadManage() {
   const local = localDrafts();
   let remote = { items: [], total: 0, page: 1, page_size: 20 }, offline = false;
   try { remote = await api('/drafts?page=' + managePage); } catch { offline = true; }
+  if (request !== manageRequest) return;
   const localIds = new Set(local.map(d => d.id));
   const available = [...local, ...remote.items.filter(d => !localIds.has(d.id))];
   root.innerHTML = `<div class="manage-card"><h3>留给下一次的灵感</h3><p>${offline ? '服务暂不可用，当前展示此设备草稿。' : '服务草稿可以在同一个服务中继续编辑；此设备草稿也会保留。'}</p>` +
@@ -615,6 +724,19 @@ async function loadManage() {
 }
 
 $$('[data-view]').forEach(b => b.onclick = action(() => navigate(b.dataset.view)));
+$('#mobileMenuToggle').onclick = () => {
+  if ($('#mobileMenu').open) closeMobileMenu(); else openMobileMenu();
+};
+$('#mobileMenuClose').onclick = closeMobileMenu;
+$('#mobileMenu').addEventListener('close', () => {
+  $('#mobileMenuToggle').setAttribute('aria-expanded', 'false');
+});
+$('#mobileMenu').addEventListener('click', event => {
+  if (event.target === $('#mobileMenu')) closeMobileMenu();
+});
+window.matchMedia?.('(max-width:650px)')?.addEventListener?.('change', event => {
+  if (!event.matches) closeMobileMenu();
+});
 window.addEventListener('hashchange', () => { navigate(location.hash.slice(1)).catch(error => toast(error.message)); });
 $$('[data-future]').forEach(b => b.onclick = () => toast(b.dataset.future + '已列入后续计划'));
 $('#profile').onclick = action(() => QuizFeature.openAccount());
@@ -624,22 +746,14 @@ $('#search').oninput = () => {
   clearTimeout(searchTimer); searchTimer = setTimeout(() => { page = 1; loadFeed(); }, 250);
 };
 $$('.extra-filters select').forEach(s => s.onchange = action(async () => { page = 1; await loadFeed(); }));
-for (const id of ['compose', 'heroCompose', 'mobileCompose']) $('#' + id).onclick = action(() => openEditor());
+$('#compose').onclick = action(() => pageActions[view]?.run());
 $('#storyFeature').onclick = action(() => navigate('stories'));
-$('#newAnniversary').onclick = () => openAnniversaryEditor();
-$('#newWish').onclick = () => openWishEditor();
-$('#addFootprint').onclick = action(async () => {
+async function beginFootprint() {
   await ensureFootprintMap(); footprintEditing = { id: uid(), revision: 0 }; footprintPicking = true;
-  $('#mapStatus').textContent = '点击地图选一个位置，或拖动地图后点击“标定地图中心”。';
+  $('#mapStatus').textContent = '先点省份放大，再点城市或区域内位置，也可用省市下拉框选择。';
   $('#chinaMap').scrollIntoView({ behavior: 'smooth', block: 'center' });
-});
+}
 $('#resetChinaMap').onclick = action(async () => { (await ensureFootprintMap()).reset(); });
-$('#markMapCenter').onclick = action(async () => {
-  const controller = await ensureFootprintMap(); const point = controller.center();
-  if (!JournalMap.validPoint(point)) { $('#mapStatus').textContent = '请把地图中心移动到中国地图覆盖范围内。'; return; }
-  const original = footprintPicking && footprintEditing ? footprintEditing : { id: uid(), revision: 0 };
-  openFootprintEditor({ ...original, ...point });
-});
 $('#footprintSearch').oninput = () => {
   clearTimeout(footprintSearchTimer);
   footprintSearchTimer = setTimeout(() => { footprintPage = 1; loadFootprints(); }, 250);
@@ -648,7 +762,7 @@ $('#repositionFootprint').onclick = action(async () => {
   footprintEditing = { ...footprintEditing, name: $('#footprintName').value,
     province: $('#footprintProvince').value, visited_on: $('#footprintDate').value || null, note: $('#footprintNote').value };
   footprintPicking = true; $('#footprintDialog').close();
-  $('#mapStatus').textContent = '重新点击地图选择位置，已经填写的文字会保留。';
+  $('#mapStatus').textContent = '选择省份后，重新点击城市或地图位置，已经填写的文字会保留。';
 });
 $('#footprintDialog').addEventListener('cancel', event => { if (footprintSaving) event.preventDefault(); });
 $('#footprintDialog').addEventListener('close', () => {
@@ -717,7 +831,7 @@ $('#anniversaryForm').onsubmit = async event => {
     $('#anniversaryError').hidden = false;
   } finally { controls.forEach(control => { control.disabled = false; }); }
 };
-for (const id of ['editor', 'detail', 'storyDialog', 'anniversaryDialog', 'wishDialog', 'footprintDialog', 'authDialog', 'questionDialog', 'quizAnswerDialog']) {
+for (const id of ['mobileMenu', 'editor', 'detail', 'storyDialog', 'anniversaryDialog', 'wishDialog', 'footprintDialog', 'authDialog', 'questionDialog', 'quizAnswerDialog']) {
   $('#' + id).addEventListener('close', () => { presentAnniversaryReminder(); });
 }
 // Future authentication can dispatch this event after a successful sign-in.
@@ -735,7 +849,6 @@ $$('[data-close]').forEach(b => b.onclick = action(async () => {
   if (b.dataset.close === 'editor') { if (!publishing) await closeEditor(); }
   else $('#' + b.dataset.close).close();
 }));
-$('#newStory').onclick = () => { $('#storyForm').reset(); $('#storyDialog').showModal(); };
 $('#storyForm').onsubmit = async event => {
   event.preventDefault(); const button = $('#storyForm button[type=submit]'); button.disabled = true;
   try {
@@ -756,10 +869,21 @@ window.addEventListener('pagehide', () => { if ($('#editor').open) captureDraft(
 if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('/sw.js').catch(() => {});
 $('#detail').addEventListener('close', () => { $$('#detail audio,#detail video').forEach(element => element.pause()); });
 MediaFeature.init({ $, $$, api, esc, icon, action, toast, uid,
+  ocr: id => QuoteFeature.extract(id),
   changed: () => { if (!draft || publishing) return; captureDraft(); clearTimeout(draftTimer); draftTimer = setTimeout(() => saveDraft().catch(() => {}), 700); },
   ensureDraft: async () => { if (!draft) throw new Error('请先打开记录编辑器'); await saveDraft(true); return draft.id; } });
 QuizFeature.init({ $, $$, api, esc, action, empty, pager, toast, uid, getView: () => view,
   onLogin: () => checkAnniversaryReminders() });
+QuoteFeature.init({ $, $$, api, esc, action, empty, pager, toast, bindEntries,
+  getDraftId: () => draft?.id, isPublishing: () => publishing,
+  applyText: (text, mode) => {
+    if (!draft || publishing || !$('#editor').open) return false;
+    const current = $('#entryBody').value;
+    const next = mode === 'replace' || !current.trim() ? text : current + '\n\n' + text;
+    if (next.length > 100000) { toast('加入后超过正文长度限制，请先精简文字'); return false; }
+    $('#entryBody').value = next; captureDraft(); clearTimeout(draftTimer);
+    draftTimer = setTimeout(() => saveDraft().catch(() => {}), 700); return true;
+  } });
 Promise.allSettled([refreshFilters(), refreshStoryChoices()])
   .then(() => navigate(location.hash.slice(1) || 'timeline'))
   .then(() => checkAnniversaryReminders())

@@ -1,4 +1,6 @@
 import sqlite3
+import re
+from urllib.parse import urlsplit, parse_qs
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
@@ -15,6 +17,25 @@ ACCOUNTS = {'accounts': [
     {'username': 'alpha', 'display_name': '第一位', 'password': PASSWORD},
     {'username': 'beta', 'display_name': '第二位', 'password': PASSWORD}
 ]}
+
+
+def test_page_loads_versioned_feature_scripts_with_revalidation(tmp_path):
+    with TestClient(create_app(tmp_path / 'assets.sqlite3')) as client:
+        index = client.get('/')
+        scripts = re.findall(r'<script src="([^"]+)"', index.text)
+        scripts = [s for s in scripts if not s.startswith('vendor/')]
+        versions = [parse_qs(urlsplit(s).query).get('v') for s in scripts]
+        assert len(scripts) == 5
+        assert all(v and v == versions[0] for v in versions)
+        for script in scripts:
+            response = client.get('/' + script)
+            assert response.status_code == 200
+            assert response.headers['cache-control'] == 'no-cache'
+            if urlsplit(script).path == 'quizzes.js':
+                assert 'openAccount, newQuestion,' in response.text
+        worker = client.get('/sw.js').text
+        assert all('/' + script in worker for script in scripts)
+        assert client.get('/api/auth/status').headers['cache-control'] == 'no-store'
 
 
 @pytest.fixture
@@ -229,7 +250,7 @@ def test_v5_upgrade_retains_existing_wishes_and_no_default_accounts(tmp_path):
         db.executescript(SCHEMA + ANNIVERSARIES_SCHEMA + CONFIRMED_ANNIVERSARIES_SCHEMA + WISHES_SCHEMA + FOOTPRINTS_SCHEMA)
         db.execute('INSERT INTO wishes(id,title,created_at,updated_at) VALUES(?,?,?,?)', (identifier, '原愿望', '2026-10-24', '2026-10-24'))
     with TestClient(create_app(path)) as client:
-        assert client.get('/api/health').json()['schema_version'] == 7
+        assert client.get('/api/health').json()['schema_version'] == 8
         assert client.get('/api/wishes').json()['items'][0]['id'] == identifier
         assert client.get('/api/auth/status').json()['configured'] is False
         assert client.get('/api/quizzes').status_code == 401

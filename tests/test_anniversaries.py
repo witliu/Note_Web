@@ -110,7 +110,7 @@ def test_v1_database_migrates_without_losing_entries_and_seeds_only_once(tmp_pat
     with TestClient(create_app(path)) as restarted:
         assert restarted.get('/api/anniversaries').json()['total'] == 5
         assert saved['id'] in {r['id'] for r in restarted.get('/api/anniversaries').json()['items']}
-        assert restarted.get('/api/health').json()['schema_version'] == 7
+        assert restarted.get('/api/health').json()['schema_version'] == 8
 
 
 def test_v2_confirmation_migration_preserves_other_settings_and_does_not_repeat(tmp_path):

@@ -160,7 +160,7 @@ def test_large_dataset_pagination(client):
 
 
 def test_local_boundary_and_private_files(client):
-    assert client.get('/api/health').json()['schema_version'] == 7
+    assert client.get('/api/health').json()['schema_version'] == 8
     assert client.get('/api/entries', headers={'Host': 'evil.example'}).status_code == 400
     assert client.post('/api/entries', json=record(), headers={'Origin': 'https://evil.example'}).status_code == 403
     assert client.post('/api/entries', content='{}', headers={'Content-Type': 'text/plain'}).status_code == 415

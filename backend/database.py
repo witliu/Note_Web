@@ -149,6 +149,15 @@ INSERT INTO schema_migrations(version) VALUES(7);
 """
 
 
+QUOTES_SCHEMA = """
+ALTER TABLE entries ADD COLUMN kind TEXT NOT NULL DEFAULT 'entry' CHECK(kind IN ('entry','quote'));
+ALTER TABLE entries ADD COLUMN quote_source TEXT NOT NULL DEFAULT '';
+ALTER TABLE entries ADD COLUMN quote_note TEXT NOT NULL DEFAULT '';
+CREATE INDEX entries_kind_date ON entries(kind,deleted_at,occurred_on DESC,id DESC);
+INSERT INTO schema_migrations(version) VALUES(8);
+"""
+
+
 class Database:
     def __init__(self, path: Path):
         self.path = Path(path).resolve()
@@ -159,7 +168,7 @@ class Database:
             db.execute('CREATE TABLE IF NOT EXISTS schema_migrations ('
                        'version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)')
             version = db.execute('SELECT COALESCE(MAX(version), 0) FROM schema_migrations').fetchone()[0]
-            if version > 7:
+            if version > 8:
                 raise RuntimeError('Database schema is newer than this application')
             if version == 0:
                 db.executescript('BEGIN IMMEDIATE;\n' + SCHEMA + '\nCOMMIT;')
@@ -181,6 +190,9 @@ class Database:
                 version = 6
             if version < 7:
                 db.executescript('BEGIN IMMEDIATE;\n' + MEDIA_SCHEMA + '\nCOMMIT;')
+                version = 7
+            if version < 8:
+                db.executescript('BEGIN IMMEDIATE;\n' + QUOTES_SCHEMA + '\nCOMMIT;')
         finally:
             db.close()
 

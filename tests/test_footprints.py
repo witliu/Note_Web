@@ -109,7 +109,7 @@ def test_v4_migration_preserves_wishes_and_anniversaries(tmp_path):
     with TestClient(create_app(path)) as client:
         assert client.get('/api/wishes').json()['items'][0]['id'] == identifier
         assert client.get('/api/anniversaries').json()['total'] == 4
-        assert client.get('/api/health').json()['schema_version'] == 7
+        assert client.get('/api/health').json()['schema_version'] == 8
         assert client.get('/api/footprints').json()['total'] == 0
 
 

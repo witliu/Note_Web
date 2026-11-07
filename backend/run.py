@@ -36,7 +36,7 @@ def main():
     for address in addresses:
         print(f'LAN:   http://{address}:{args.port}/', flush=True)
     if args.lan:
-        print('LAN trial: no account sign-in yet. Devices on this LAN can read and edit.', flush=True)
+        print('LAN shared mode: quizzes require accounts; journal and media are shared on this LAN.', flush=True)
         print('Keep this computer awake. Do not forward this port to the internet.', flush=True)
     uvicorn.run('backend.app:app', host=host, port=args.port)
 

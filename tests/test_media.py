@@ -1,4 +1,5 @@
 import hashlib
+import io
 import sqlite3
 import subprocess
 import sys
@@ -10,6 +11,76 @@ from fastapi.testclient import TestClient
 
 from backend.app import create_app
 from backend.media import CHUNK, ObjectWriter
+
+
+def jpeg_preview():
+    from PIL import Image
+    output = io.BytesIO()
+    Image.new('RGB', (40, 30), '#e5a6c4').save(output, 'JPEG')
+    return output.getvalue()
+
+
+def test_dng_preview_cached_separately_and_original_download_unchanged(client, monkeypatch):
+    from backend import previews
+    draft_id, payload, _ = make_draft(client)
+    raw = b'II*\x00' + b'DNG-original-data' * 100
+    meta, item = upload(client, draft_id, raw, name='photo.DNG')
+    calls = []
+    expected = jpeg_preview()
+    monkeypatch.setattr(previews, 'decode', lambda data: (calls.append(data), expected)[1])
+    assert item['mime'] == 'image/x-adobe-dng'
+    assert item['preview_url'].endswith('/preview')
+    for method in [client.get, client.get, client.head]:
+        response = method(item['preview_url'])
+        assert response.status_code == 200
+        assert response.headers['content-type'] == 'image/jpeg'
+        assert response.headers['cache-control'] == 'no-store'
+        assert int(response.headers['content-length']) == len(expected)
+    assert calls == [raw]
+    assert client.get(item['preview_url']).content == expected
+    assert client.get(item['download_url']).content == raw
+    saved = publish(client, draft_id, payload, [meta['id']])
+    assert saved['attachments'][0]['preview_url'] == item['preview_url']
+    assert saved['attachments'][0]['sha256'] == hashlib.sha256(raw).hexdigest()
+    assert client.get('/api/album').json()['items'][0]['preview_url'] == item['preview_url']
+
+
+def test_invalid_dng_fails_preview_without_affecting_original(client):
+    draft_id, _, _ = make_draft(client)
+    raw = b'II*\x00invalid-raw-file'
+    _, item = upload(client, draft_id, raw, name='invalid.dng')
+    assert client.get(item['preview_url']).status_code == 422
+    assert client.get(item['download_url']).content == raw
+
+
+def test_preview_limits_pending_and_ordinary_files(client, monkeypatch):
+    from backend import previews
+    draft_id, _, _ = make_draft(client)
+    _, png = upload(client, draft_id, b'\x89PNG\r\n\x1a\nfile')
+    assert png['preview_url'] == png['url']
+    assert client.get('/api/media/' + png['id'] + '/preview').status_code == 415
+    raw = b'II*\x00' + b'DNG-data' * 10
+    _, dng = upload(client, draft_id, raw, name='big.dng')
+    monkeypatch.setattr(previews, 'MAX_BYTES', 10)
+    assert client.get(dng['preview_url']).status_code == 413
+    pending = str(uuid4())
+    client.post('/api/media', json={'id': pending, 'draft_id': draft_id, 'name': 'waiting.dng', 'size': 10})
+    assert client.get('/api/media/' + pending + '/preview').status_code == 409
+
+
+def test_preview_timeout_can_retry_without_changing_original(client, monkeypatch):
+    from backend import previews
+    draft_id, _, _ = make_draft(client)
+    raw = b'II*\x00DNG-data'
+    _, item = upload(client, draft_id, raw, name='retry.dng')
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired('preview-worker', 60)
+    with monkeypatch.context() as scoped:
+        scoped.setattr(previews.subprocess, 'run', timeout)
+        assert client.get(item['preview_url']).status_code == 504
+    monkeypatch.setattr(previews, 'decode', lambda _: jpeg_preview())
+    assert client.get(item['preview_url']).status_code == 200
+    assert client.get(item['download_url']).content == raw
 
 
 @pytest.fixture
@@ -219,6 +290,25 @@ def test_restarting_service_preserves_original_database_and_media(client):
     with TestClient(create_app(client.app.state.journal.database.path)) as second:
         assert second.get('/api/entries/' + entry['id']).json()['attachments'][0]['sha256'] == item['sha256']
         assert second.get(item['url']).content == b'document persisted on server'
+
+
+def test_reordering_existing_entry_survives_restart_without_changing_originals(client):
+    draft_id, payload, _ = make_draft(client)
+    originals = [b'\x89PNG\r\n\x1a\n' + name.encode() for name in ['one', 'two', 'three']]
+    items = [upload(client, draft_id, raw, name=f'{index}.png')[1] for index, raw in enumerate(originals)]
+    entry = publish(client, draft_id, payload, [item['id'] for item in items])
+    order = [items[2]['id'], items[0]['id'], items[1]['id']]
+    edit_id, edit_payload, _ = make_draft(client, entry_id=entry['id'], editing_id=entry['id'],
+                                        editing_revision=entry['revision'], attachment_ids=order)
+    drafts = client.get('/api/drafts').json()['items']
+    assert next(d for d in drafts if d['id'] == edit_id)['attachment_ids'] == order
+    saved = publish(client, edit_id, edit_payload, order, revision=entry['revision'])
+    assert [a['id'] for a in saved['attachments']] == order
+    with TestClient(create_app(client.app.state.journal.database.path)) as second:
+        reopened = second.get('/api/entries/' + entry['id']).json()
+        assert [a['id'] for a in reopened['attachments']] == order
+        for item, raw in zip(items, originals):
+            assert second.get(item['download_url']).content == raw
 
 
 def test_entry_deletion_hides_album_then_restore_and_attachment_order_preserved(client):

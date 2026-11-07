@@ -28,6 +28,8 @@ from .models import AccountSetup, LoginInput, QuestionInput, QuizAnswerInput
 from .models import MediaInit, MediaDiscard
 from .media import MediaStore, ObjectWriter
 from .repository import Journal
+from . import ocr
+from . import previews
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -46,7 +48,7 @@ def create_app(db_path=None, allowed_hosts=None):
             yield
         finally: store.release()
 
-    app = FastAPI(title='最爱老婆 · 本地开发 API', lifespan=lifespan)
+    app = FastAPI(title='喵西 · 本地开发 API', lifespan=lifespan)
     hosts = ['127.0.0.1', 'localhost', '[::1]', 'testserver']
     hosts.extend(allowed_hosts or [])
     hosts.extend(h.strip() for h in os.environ.get('JOURNAL_ALLOWED_HOSTS', '').split(',') if h.strip())
@@ -79,6 +81,9 @@ def create_app(db_path=None, allowed_hosts=None):
         response.headers['Referrer-Policy'] = 'same-origin'
         if request.url.path.startswith('/api/'):
             response.headers['Cache-Control'] = 'no-store'
+        elif request.url.path.endswith(('.js', '.css')):
+            # Revalidate public code so a new page cannot silently reuse old feature APIs.
+            response.headers['Cache-Control'] = 'no-cache'
         return response
 
     @app.exception_handler(sqlite3.Error)
@@ -94,6 +99,14 @@ def create_app(db_path=None, allowed_hosts=None):
     @app.get('/api/media/config')
     def media_config():
         return {'max_file_size': media().max_size, 'max_attachments': 50}
+
+    @app.get('/api/ocr/status')
+    def ocr_status():
+        return {**ocr.status(), 'max_image_size': ocr.MAX_OCR_BYTES}
+
+    @app.post('/api/media/{identifier}/ocr')
+    def recognize_image(identifier: UUID):
+        return ocr.recognize(media(), identifier)
 
     @app.post('/api/media')
     def init_media(data: MediaInit):
@@ -134,6 +147,12 @@ def create_app(db_path=None, allowed_hosts=None):
             if isinstance(exc, ClientDisconnect): raise HTTPException(400, '上传连接中断，请重新上传这个文件')
             if isinstance(exc, OSError): raise HTTPException(507 if exc.errno == 28 else 503, '文件入库失败，请检查磁盘空间后重试')
             raise
+
+    @app.api_route('/api/media/{identifier}/preview', methods=['GET', 'HEAD'])
+    def media_preview(identifier: UUID, request: Request):
+        data = previews.preview(media(), identifier)
+        return Response(content=data if request.method == 'GET' else b'', media_type='image/jpeg',
+                        headers={'Content-Length': str(len(data)), 'Content-Disposition': 'inline; filename="preview.jpg"'})
 
     @app.api_route('/api/media/{identifier}/content', methods=['GET', 'HEAD'])
     def media_content(identifier: UUID, request: Request, download: bool = False):
@@ -214,8 +233,9 @@ def create_app(db_path=None, allowed_hosts=None):
                 q: str = Query('', max_length=200), year: int | None = Query(None, ge=1, le=9998),
                 month: int | None = Query(None, ge=1, le=12), tag: str = Query('', max_length=40),
                 story: UUID | None = None, order: Literal['asc', 'desc'] = 'desc',
-                media_type: Literal['all', 'text', 'image', 'video', 'audio', 'document'] = 'all'):
-        return journal().list_entries(page, page_size, q, year, month, tag, story, order == 'asc', media_type)
+                media_type: Literal['all', 'text', 'image', 'video', 'audio', 'document'] = 'all',
+                kind: Literal['all', 'entry', 'quote'] = 'all'):
+        return journal().list_entries(page, page_size, q, year, month, tag, story, order == 'asc', media_type, kind)
 
     @app.get('/api/entries/{identifier}')
     def entry(identifier: UUID):
@@ -367,6 +387,10 @@ def create_app(db_path=None, allowed_hosts=None):
     @app.get('/media.js')
     def media_script():
         return FileResponse(ROOT / 'web' / 'media.js', media_type='application/javascript')
+
+    @app.get('/quotes.js')
+    def quote_script():
+        return FileResponse(ROOT / 'web' / 'quotes.js', media_type='application/javascript')
 
     # Serve only public images; project source, .git, data, and backups are never mounted.
     app.mount('/assets', StaticFiles(directory=ROOT / 'couple-journal' / 'assets'), name='assets')

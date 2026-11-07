@@ -51,15 +51,19 @@ class Journal:
             'SELECT COUNT(*) FROM text_history WHERE entry_id=?', (row['id'],)).fetchone()[0]
         return result
 
-    def list_entries(self, page, size, q='', year=None, month=None, tag='', story=None, asc=False, media_type='all'):
+    def list_entries(self, page, size, q='', year=None, month=None, tag='', story=None, asc=False, media_type='all', kind='all'):
         where, args = ['e.deleted_at IS NULL'], []
+        if kind != 'all':
+            where.append('e.kind=?')
+            args.append(kind)
         if q:
             # Escape LIKE wildcards so a user's % or _ is searched literally.
             pattern = '%' + q.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
             where.append("(e.title LIKE ? ESCAPE '\\' OR e.body LIKE ? ESCAPE '\\' OR e.place LIKE ? ESCAPE '\\' "
+                         "OR e.quote_source LIKE ? ESCAPE '\\' OR e.quote_note LIKE ? ESCAPE '\\' "
                          "OR EXISTS(SELECT 1 FROM entry_media a JOIN media m ON m.id=a.media_id WHERE a.entry_id=e.id "
                          "AND a.deleted_at IS NULL AND m.name LIKE ? ESCAPE '\\'))")
-            args.extend([pattern] * 4)
+            args.extend([pattern] * 6)
         if media_type == 'text':
             where.append('NOT EXISTS(SELECT 1 FROM entry_media a WHERE a.entry_id=e.id AND a.deleted_at IS NULL)')
         elif media_type != 'all':
@@ -127,6 +131,8 @@ class Journal:
                            'VALUES(?,?,?,?,?,?,?,?)', (identifier, data.title, data.body,
                            payload['date'], data.place, payload['story'], timestamp, timestamp))
             db.executemany('INSERT INTO entry_tags VALUES(?,?)', [(identifier, t) for t in data.tags])
+            db.execute('UPDATE entries SET kind=?,quote_source=?,quote_note=? WHERE id=?',
+                       (data.kind, data.quote_source, data.quote_note, identifier))
             selected = [str(i) for i in data.attachment_ids]
             for link in db.execute('SELECT id,media_id FROM entry_media WHERE entry_id=? AND deleted_at IS NULL', (identifier,)).fetchall():
                 if link['media_id'] not in selected:
